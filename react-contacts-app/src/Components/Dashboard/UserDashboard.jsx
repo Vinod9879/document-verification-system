@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../Services/AuthService';
 import userService from '../../Services/UserService';
-import documentService from '../../Services/DocumentService';
+import documentService from '../../Services/documentService';
 import auditLogsService from '../../Services/AuditLogsService';
 import Card from '../Common/Card';
 import Button from '../Common/Button';
@@ -257,6 +257,51 @@ Documents: ${upload.ecPath ? 'EC ✓' : 'EC ✗'} | ${upload.aadhaarPath ? 'Aadh
     return 'Low Risk';
   };
 
+  const getStatusText = (status) => {
+    if (!status) return '⏳ No Documents';
+    
+    if (status.isVerified) return '✅ Verified';
+    
+    if (status.verificationStatus === 'Rejected') return '❌ Rejected';
+    if (status.verificationStatus === 'Under Review') return '🔍 Under Review';
+    if (status.verificationStatus === 'Verified') return '✅ Verified';
+    
+    if (status.hasExtractedData) return '⏳ Awaiting Verification';
+    if (status.hasDocuments) return '📄 Documents Uploaded';
+    
+    return '⏳ Pending';
+  };
+
+  const getStatusColor = (status) => {
+    if (!status) return 'secondary';
+    
+    if (status.isVerified) return 'success';
+    
+    if (status.verificationStatus === 'Rejected') return 'danger';
+    if (status.verificationStatus === 'Under Review') return 'info';
+    if (status.verificationStatus === 'Verified') return 'success';
+    
+    if (status.hasExtractedData) return 'warning';
+    if (status.hasDocuments) return 'primary';
+    
+    return 'warning';
+  };
+
+  const getStatusDescription = (status) => {
+    if (!status) return 'No documents uploaded yet';
+    
+    if (status.isVerified) return 'All documents verified successfully';
+    
+    if (status.verificationStatus === 'Rejected') return 'Documents rejected - please resubmit';
+    if (status.verificationStatus === 'Under Review') return 'Documents under admin review';
+    if (status.verificationStatus === 'Verified') return 'All documents verified successfully';
+    
+    if (status.hasExtractedData) return 'Documents extracted - awaiting verification';
+    if (status.hasDocuments) return 'Documents uploaded - awaiting extraction';
+    
+    return 'Awaiting document upload';
+  };
+
   // Profile editing handlers
   const handleEditProfile = () => {
     if (profile) {
@@ -508,8 +553,8 @@ Documents: ${upload.ecPath ? 'EC ✓' : 'EC ✗'} | ${upload.aadhaarPath ? 'Aadh
           <div className="col-md-3">
             <Card title="Current Status" className="text-center">
               <div className="d-flex justify-content-between align-items-center mb-2">
-                <h4 className={`text-${documentStatus.isVerified ? 'success' : 'warning'} mb-0`}>
-                  {documentStatus.isVerified ? '✅ Verified' : '⏳ Pending'}
+                <h4 className={`text-${getStatusColor(documentStatus)} mb-0`}>
+                  {getStatusText(documentStatus)}
                 </h4>
                 <button 
                   className="btn btn-sm btn-outline-primary"
@@ -529,14 +574,11 @@ Documents: ${upload.ecPath ? 'EC ✓' : 'EC ✗'} | ${upload.aadhaarPath ? 'Aadh
           </div>
           <div className="col-md-3">
             <Card title="Verification Status" className="text-center">
-              <h4 className={`text-${documentStatus.isVerified ? 'success' : 'warning'}`}>
-                {documentStatus.isVerified ? 'Verified' : (documentStatus.verificationStatus || 'Pending')}
+              <h4 className={`text-${getStatusColor(documentStatus)}`}>
+                {getStatusText(documentStatus)}
               </h4>
               <small className="text-muted">
-                {documentStatus.isVerified ? 'All documents verified' : 
-                 documentStatus.verificationStatus === 'Rejected' ? 'Documents rejected' :
-                 documentStatus.verificationStatus === 'Under Review' ? 'Under review' :
-                 'Awaiting verification'}
+                {getStatusDescription(documentStatus)}
               </small>
             </Card>
           </div>
@@ -648,8 +690,8 @@ Documents: ${upload.ecPath ? 'EC ✓' : 'EC ✗'} | ${upload.aadhaarPath ? 'Aadh
                 <div className="col-md-3">
                   <div className="text-center">
                     <h6 className="text-muted">Status</h6>
-                    <span className={`badge bg-${documentStatus.isVerified ? 'success' : 'warning'}`}>
-                      {documentStatus.isVerified ? 'Verified' : (documentStatus.verificationStatus || 'Pending')}
+                    <span className={`badge bg-${getStatusColor(documentStatus)}`}>
+                      {getStatusText(documentStatus)}
                     </span>
                   </div>
                 </div>
@@ -664,8 +706,8 @@ Documents: ${upload.ecPath ? 'EC ✓' : 'EC ✗'} | ${upload.aadhaarPath ? 'Aadh
                 <div className="col-md-3">
                   <div className="text-center">
                     <h6 className="text-muted">Verification Status</h6>
-                    <span className={`badge bg-${documentStatus.verificationStatus === 'Verified' ? 'success' : documentStatus.verificationStatus === 'Rejected' ? 'danger' : 'warning'}`}>
-                      {documentStatus.verificationStatus || 'Pending'}
+                    <span className={`badge bg-${getStatusColor(documentStatus)}`}>
+                      {getStatusText(documentStatus)}
                     </span>
                   </div>
                 </div>
