@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../Services/AuthService';
 import userService from '../../Services/UserService';
-import documentService from '../../Services/DocumentService';
+import documentService from '../../Services/documentService';
 import auditLogsService from '../../Services/AuditLogsService';
 import Card from '../Common/Card';
 import Button from '../Common/Button';
@@ -31,6 +31,7 @@ const AdminDashboard = () => {
   
   // New states for document management
   const [documents, setDocuments] = useState([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
   const [analytics, setAnalytics] = useState(null);
   const [activityLogs, setActivityLogs] = useState([]);
   const [activeTab, setActiveTab] = useState('users');
@@ -70,13 +71,24 @@ const AdminDashboard = () => {
     }
   };
 
-  const fetchDocuments = async () => {
+  const fetchDocuments = async (forceRefresh = false) => {
+    // Prevent multiple simultaneous calls
+    if (documentsLoading && !forceRefresh) {
+      console.log('Documents already loading, skipping...');
+      return;
+    }
+
     try {
+      setDocumentsLoading(true);
+      console.log('Fetching documents from API...');
       const documentsData = await documentService.getAllDocuments();
       console.log('Documents data received:', documentsData);
       setDocuments(documentsData || []);
     } catch (error) {
-      console.log('Failed to load documents:', error);
+      console.error('Failed to load documents:', error);
+      setMessage('Failed to load documents. Please try again.');
+    } finally {
+      setDocumentsLoading(false);
     }
   };
 
@@ -126,7 +138,7 @@ const AdminDashboard = () => {
     try {
       const result = await documentService.triggerVerification(documentId);
       setMessage(`Verification completed! Status: ${result.isVerified ? 'VERIFIED' : 'FAILED'}.`);
-      fetchDocuments();
+      fetchDocuments(true);
     } catch (error) {
       setMessage('Failed to trigger verification');
     }
@@ -134,15 +146,24 @@ const AdminDashboard = () => {
 
   // Removed handleAdminManualVerification - now using single verification method
 
+  const [extractingDocuments, setExtractingDocuments] = useState(new Set());
+
   const handleExtractDocuments = async (documentId) => {
     try {
+      setExtractingDocuments(prev => new Set(prev).add(documentId));
       setMessage('Extracting documents...');
-      const result = await documentService.extractDocuments(documentId);
+      const result = await documentService.extractDocumentsAdmin(documentId);
       setMessage(`Extraction completed! ${result.message}`);
-      fetchDocuments(); // Refresh the documents list
+      fetchDocuments(true); // Force refresh the documents list
     } catch (error) {
       console.error('Error extracting documents:', error);
       setMessage('Failed to extract documents');
+    } finally {
+      setExtractingDocuments(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(documentId);
+        return newSet;
+      });
     }
   };
 
@@ -183,6 +204,25 @@ const AdminDashboard = () => {
       document.body.removeChild(a);
     } catch (error) {
       setMessage('Failed to download document');
+    }
+  };
+
+  const handleGetGeoLocation = async (uploadId) => {
+    try {
+      setMessage('Getting location...');
+      const locationData = await documentService.getGeoLocation(uploadId);
+      console.log('Location data:', locationData);
+      
+      // Display the location information
+      setMessage(`Location found: ${locationData.address} (Lat: ${locationData.latitude}, Lng: ${locationData.longitude})`);
+      
+      // You can also open the location in a new tab with Google Maps
+      const mapsUrl = `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}`;
+      window.open(mapsUrl, '_blank');
+      
+    } catch (error) {
+      console.error('Error getting location:', error);
+      setMessage('Failed to get location: ' + (error.response?.data?.message || error.message));
     }
   };
 
@@ -561,8 +601,20 @@ const AdminDashboard = () => {
             <Card title="Document Monitoring" className="dashboard-card">
               <div className="card-header d-flex justify-content-between align-items-center">
                 <h6 className="mb-0">User Document Status & Actions</h6>
-                <Button variant="outline-primary" size="sm" onClick={fetchDocuments}>
-                  Refresh Documents
+                <Button 
+                  variant="outline-primary" 
+                  size="sm" 
+                  onClick={() => fetchDocuments(true)}
+                  disabled={documentsLoading}
+                >
+                  {documentsLoading ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                      Loading...
+                    </>
+                  ) : (
+                    'Refresh Documents'
+                  )}
                 </Button>
               </div>
               
@@ -620,14 +672,23 @@ const AdminDashboard = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDocuments.length === 0 ? (
+                    {documentsLoading ? (
+                      <tr>
+                        <td colSpan="6" className="text-center py-4">
+                          <div className="d-flex justify-content-center align-items-center">
+                            <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                            <span>Loading documents...</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : filteredDocuments.length === 0 ? (
                       <tr>
                         <td colSpan="6" className="text-center py-4">
                           <p className="text-muted">
                             {documents.length === 0 ? 'No documents found.' : 'No documents match your search.'}
                           </p>
                           {documents.length === 0 ? (
-                            <Button variant="primary" size="sm" onClick={fetchDocuments}>
+                            <Button variant="primary" size="sm" onClick={() => fetchDocuments(true)}>
                               Load Documents
                             </Button>
                           ) : (
@@ -701,9 +762,15 @@ const AdminDashboard = () => {
                                 variant="outline-success" 
                                 size="sm"
                                 onClick={() => handleExtractDocuments(doc.id)}
-                                title="Extract data from documents"
+                                disabled={doc.hasExtractedData || extractingDocuments.has(doc.id)}
+                                title={doc.hasExtractedData ? "Already extracted" : extractingDocuments.has(doc.id) ? "Extracting..." : "Extract data from documents"}
                               >
-                                Extract
+                                {extractingDocuments.has(doc.id) ? (
+                                  <>
+                                    <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                    Extracting...
+                                  </>
+                                ) : doc.hasExtractedData ? "Extracted" : "Extract"}
                               </Button>
                               <Button 
                                 variant="outline-primary" 
@@ -720,6 +787,14 @@ const AdminDashboard = () => {
                                 title="View extracted document data"
                               >
                                 View
+                              </Button>
+                              <Button 
+                                variant="outline-warning" 
+                                size="sm"
+                                onClick={() => handleGetGeoLocation(doc.id)}
+                                title="Get document location"
+                              >
+                                📍 Location
                               </Button>
                             </div>
                           </td>
@@ -1482,12 +1557,19 @@ const AdminDashboard = () => {
                                 variant="outline-primary" 
                                 size="sm"
                                 onClick={() => handleExtractDocuments(doc.id)}
+                                disabled={doc.hasExtractedData || extractingDocuments.has(doc.id)}
+                                title={doc.hasExtractedData ? "Already extracted" : extractingDocuments.has(doc.id) ? "Extracting..." : "Extract data from documents"}
                                 style={{
                                   borderRadius: '15px',
                                   fontSize: '12px'
                                 }}
                               >
-                                🔍 Extract
+                                {extractingDocuments.has(doc.id) ? (
+                                  <>
+                                    <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                    Extracting...
+                                  </>
+                                ) : doc.hasExtractedData ? "✅ Extracted" : "🔍 Extract"}
                               </Button>
                               <Button 
                                 variant="outline-success" 
@@ -1510,6 +1592,18 @@ const AdminDashboard = () => {
                                 }}
                               >
                                 👁️ View
+                              </Button>
+                              <Button 
+                                variant="outline-warning" 
+                                size="sm"
+                                onClick={() => handleGetGeoLocation(doc.id)}
+                                title="Get document location"
+                                style={{
+                                  borderRadius: '15px',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                📍 Location
                               </Button>
                             </div>
                           </div>
