@@ -408,6 +408,73 @@ namespace webApitest.Controllers
         }
     }
 
+    [HttpPost("verify-documents")]
+    [Authorize]
+    public async Task<IActionResult> VerifyDocuments()
+    {
+        try
+        {
+            var userId = GetCurrentUserId();
+
+            // Get the latest document upload for this user
+            var latestUpload = await _context.UserUploadedDocuments
+                .Where(u => u.UserId == userId)
+                .OrderByDescending(u => u.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (latestUpload == null)
+            {
+                return NotFound("No documents uploaded yet");
+            }
+
+            // Check if documents have been extracted
+            var hasExtractedData = await _context.ExtractedData
+                .AnyAsync(e => e.UploadId == latestUpload.Id);
+
+            if (!hasExtractedData)
+            {
+                return BadRequest("Documents must be extracted before verification");
+            }
+
+            // Check if already verified
+            var existingVerification = await _context.VerificationResults
+                .FirstOrDefaultAsync(v => v.UploadId == latestUpload.Id);
+
+            if (existingVerification != null)
+            {
+                return Ok(new { 
+                    message = "Documents already verified", 
+                    verificationResult = existingVerification 
+                });
+            }
+
+            // Trigger verification
+            var verificationService = new VerificationService(_context, _logger);
+            var result = await verificationService.VerifyAsync(latestUpload.Id);
+
+            // Log the activity
+            await _auditService.LogActivityAsync(
+                userId,
+                "Document Verification",
+                "User triggered document verification",
+                "Verification",
+                latestUpload.Id,
+                "Success",
+                $"Verification completed for Upload ID: {latestUpload.Id}"
+            );
+
+            return Ok(new { 
+                message = "Documents verified successfully", 
+                verificationResult = result 
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error verifying documents for user {UserId}", GetCurrentUserId());
+            return StatusCode(500, "Internal server error during document verification");
+        }
+    }
+
     // DTO for change password
     public class ChangePasswordDto
     {
