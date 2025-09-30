@@ -168,14 +168,7 @@ const AdminLogin = () => {
                 loading={loading}
                 disabled={loading}
               >
-                {loading ? (
-                  <>
-                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
-                    Signing In...
-                  </>
-                ) : (
-                  'Admin Sign In'
-                )}
+                {loading ? 'Signing In...' : 'Admin Sign In'}
               </Button>
             </div>
             
