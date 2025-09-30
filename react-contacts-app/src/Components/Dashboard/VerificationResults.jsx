@@ -1,10 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import Card from '../Common/Card';
 import Button from '../Common/Button';
+import documentService from '../../Services/documentService';
 
 const VerificationResults = ({ documentStatus, extractedData, onRefresh }) => {
   const [activeTab, setActiveTab] = useState('overview');
   const [mismatchDetails, setMismatchDetails] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+
+  const handleVerifyDocuments = async () => {
+    try {
+      setVerifying(true);
+      const result = await documentService.verifyDocuments();
+      console.log('Verification result:', result);
+      
+      // Refresh the document status to show updated verification
+      if (onRefresh) {
+        await onRefresh();
+      }
+      
+      alert('Documents verified successfully!');
+    } catch (error) {
+      console.error('Verification error:', error);
+      alert('Error verifying documents: ' + (error.response?.data?.message || error.message));
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const getStatusBadge = (documentStatus) => {
     if (documentStatus?.isVerified) {
@@ -531,6 +553,32 @@ const VerificationResults = ({ documentStatus, extractedData, onRefresh }) => {
                   <span className={`badge ms-2 ${documentStatus.riskScore >= 80 ? 'bg-danger' : documentStatus.riskScore >= 50 ? 'bg-warning' : 'bg-success'}`}>
                     {documentStatus.riskScore >= 80 ? 'High Risk' : documentStatus.riskScore >= 50 ? 'Medium Risk' : 'Low Risk'}
                   </span>
+                </div>
+              )}
+              
+              {/* Verification Button */}
+              {documentStatus?.hasExtractedData && !documentStatus?.isVerified && documentStatus?.verificationStatus !== 'Rejected' && (
+                <div className="mt-3">
+                  <button 
+                    className="btn btn-primary"
+                    onClick={handleVerifyDocuments}
+                    disabled={verifying}
+                  >
+                    {verifying ? (
+                      <>
+                        <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                        Verifying...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-check-circle me-2"></i>
+                        Verify Documents
+                      </>
+                    )}
+                  </button>
+                  <small className="text-muted d-block mt-1">
+                    Click to verify your documents against the database
+                  </small>
                 </div>
               )}
             </div>
