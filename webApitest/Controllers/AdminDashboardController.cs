@@ -8,6 +8,9 @@ using DocumentVerificationDLL;
 using VerificationDLL;
 using System.Security.Claims;
 using webApitest.DTOs;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Globalization;
 
 namespace webApitest.Controllers
 {
@@ -328,6 +331,26 @@ namespace webApitest.Controllers
                     $"ExtractedData ID: {extractedData.Id}, Upload ID: {uploadId}");
 
                 _logger.LogInformation($"Document extraction completed for upload {uploadId} by admin. ExtractedData ID: {extractedData.Id}");
+
+                // Automatically trigger verification after extraction
+                try
+                {
+                    var verificationService = new VerificationService(_context, _logger);
+                    var verificationResult = await verificationService.VerifyAsync(uploadId);
+                    
+                    // Log automatic verification
+                    await _auditService.LogActivityAsync(adminId, "Automatic Document Verification", 
+                        $"Automatically verified documents after extraction for User: {upload.User?.FullName} ({upload.User?.Email})", 
+                        HttpContext, "Verification", uploadId, "Success", 
+                        $"Verification completed automatically for Upload ID: {uploadId}, Status: {verificationResult.Status}");
+                    
+                    _logger.LogInformation($"Automatic verification completed for upload {uploadId}. Status: {verificationResult.Status}");
+                }
+                catch (Exception verificationEx)
+                {
+                    _logger.LogError(verificationEx, $"Error during automatic verification for upload {uploadId}");
+                    // Don't fail the extraction if verification fails
+                }
 
                 return Ok(new
                 {
@@ -713,5 +736,93 @@ namespace webApitest.Controllers
                 return StatusCode(500, "Internal server error while retrieving user documents");
             }
         }
+
+        [HttpGet("geolocation/{uploadId}")]
+        [Authorize]
+        public async Task<IActionResult> GetGeoLocation(int uploadId)
+        {
+            try
+            {
+                // Step 1: Fetch extracted EC data
+                var extracted = await _context.ExtractedData
+                    .FirstOrDefaultAsync(e => e.UploadId == uploadId);
+
+                if (extracted == null)
+                    return NotFound("Extracted EC data not found for this UploadId.");
+
+                // Step 2: Validate minimum fields
+                if (string.IsNullOrWhiteSpace(extracted.Village) ||
+                    string.IsNullOrWhiteSpace(extracted.Taluk) ||
+                    string.IsNullOrWhiteSpace(extracted.District))
+                {
+                    return BadRequest("Incomplete address data. At least Village, Taluk, and District are required.");
+                }
+
+                // Step 3: Clean up District (handle Bangalore Urban -> Bengaluru)
+                var district = extracted.District.Trim();
+                if (district.Equals("Bangalore Urban", StringComparison.OrdinalIgnoreCase))
+                    district = "Bengaluru";
+
+                // Hardcode state as Karnataka
+                const string state = "Karnataka";
+
+                // Step 4: Build full address
+                var address = $"{extracted.Village}, {extracted.Taluk}, {district}, {state}, India";
+                address = Regex.Replace(address, @"\s+", " ").Trim().Trim(',');
+
+                // Step 5: Call Nominatim API
+                using var client = new HttpClient();
+                client.DefaultRequestHeaders.UserAgent.ParseAdd("MyGeoApp/1.0 (https://mydomain.com/contact)");
+
+                async Task<List<NominatimResult>?> QueryNominatim(string queryAddress)
+                {
+                    var url = $"https://nominatim.openstreetmap.org/search?format=json&q={Uri.EscapeDataString(queryAddress)}";
+                    _logger.LogInformation("Geocoding with address: {Address}, URL: {Url}", queryAddress, url);
+
+                    var response = await client.GetAsync(url);
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        _logger.LogError("Nominatim API failed. Status: {Status}", response.StatusCode);
+                        return null;
+                    }
+
+                    var json = await response.Content.ReadAsStringAsync();
+                    return JsonSerializer.Deserialize<List<NominatimResult>>(json);
+                }
+
+                // Try primary query
+                var results = await QueryNominatim(address);
+
+                // Fallback query (only Village + State + India)
+                if (results == null || results.Count == 0)
+                {
+                    var fallbackAddress = $"{extracted.Village}, {state}, India";
+                    _logger.LogWarning("Primary geocoding failed, retrying with fallback: {FallbackAddress}", fallbackAddress);
+                    results = await QueryNominatim(fallbackAddress);
+                }
+
+                if (results == null || results.Count == 0)
+                    return BadRequest("Unable to find location for this address.");
+
+                decimal lat = decimal.Parse(results[0].lat, CultureInfo.InvariantCulture);
+                decimal lon = decimal.Parse(results[0].lon, CultureInfo.InvariantCulture);
+
+                // Return directly to frontend without database storage
+                return Ok(new { latitude = lat, longitude = lon, address });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, $"Error while getting geolocation for upload {uploadId}");
+                return StatusCode(500, "Internal server error while getting geolocation");
+            }
+        }
+    }
+
+    // Nominatim API response model
+    public class NominatimResult
+    {
+        public string lat { get; set; } = string.Empty;
+        public string lon { get; set; } = string.Empty;
+        public string display_name { get; set; } = string.Empty;
     }
 }
