@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../Services/AuthService';
-import documentService from '../../Services/DocumentService';
+import documentService from '../../Services/documentService';
 import Card from '../Common/Card';
 import Button from '../Common/Button';
 import toast from 'react-hot-toast';
@@ -79,14 +79,17 @@ const DocumentExtraction = () => {
     }
   };
 
+  const [extractingDocuments, setExtractingDocuments] = useState(new Set());
+
   const handleExtractDocuments = async (uploadId) => {
     try {
+      setExtractingDocuments(prev => new Set(prev).add(uploadId));
       setExtracting(true);
       toast.loading('Extracting data from documents...', { id: 'extract' });
 
       const response = isAdmin 
         ? await documentService.extractDocumentsAdmin(uploadId)
-        : await documentService.extractDocuments(uploadId);
+        : await documentService.extractDocumentsUser(uploadId);
       
       toast.success('Data extracted successfully!', { id: 'extract' });
       
@@ -105,6 +108,11 @@ const DocumentExtraction = () => {
       toast.error('Failed to extract data from documents', { id: 'extract' });
     } finally {
       setExtracting(false);
+      setExtractingDocuments(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(uploadId);
+        return newSet;
+      });
     }
   };
 
@@ -293,9 +301,15 @@ const DocumentExtraction = () => {
                               variant="primary" 
                               size="sm"
                               onClick={() => handleExtractDocuments(doc.id)}
-                              disabled={extracting}
+                              disabled={extracting || doc.hasExtractedData || extractingDocuments.has(doc.id)}
+                              title={doc.hasExtractedData ? "Already extracted" : extractingDocuments.has(doc.id) ? "Extracting..." : "Extract data from documents"}
                             >
-                              {extracting ? 'Extracting...' : 'Extract Data'}
+                              {extractingDocuments.has(doc.id) ? (
+                                <>
+                                  <span className="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                                  Extracting...
+                                </>
+                              ) : doc.hasExtractedData ? 'Extracted' : 'Extract Data'}
                             </Button>
                           </td>
                         </tr>
