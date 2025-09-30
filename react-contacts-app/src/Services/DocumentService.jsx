@@ -33,7 +33,7 @@ const documentService = {
     return response.data;
   },
 
-  async extractDocuments(uploadId) {
+  async extractDocumentsUser(uploadId) {
     // Call the extraction endpoint for user
     const response = await api.post(`/UserDashboard/extract/${uploadId}`);
     return response.data;
@@ -102,11 +102,6 @@ const documentService = {
     return response.data;
   },
 
-  async extractDocuments(documentId) {
-    // Call the actual extraction endpoint
-    const response = await api.post(`/AdminDashboard/extract/${documentId}`);
-    return response.data;
-  },
 
   async triggerVerification(documentId) {
     const response = await api.post(`/AdminDashboard/verify/${documentId}`);
@@ -148,6 +143,16 @@ const documentService = {
 
   async getUserDocuments(userId) {
     const response = await api.get(`/AdminDashboard/users/${userId}/documents`);
+    return response.data;
+  },
+
+  async verifyDocuments() {
+    const response = await api.post('/UserDashboard/verify-documents');
+    return response.data;
+  },
+
+  async getGeoLocation(uploadId) {
+    const response = await api.get(`/AdminDashboard/geolocation/${uploadId}`);
     return response.data;
   },
 };
