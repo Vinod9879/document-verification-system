@@ -143,7 +143,17 @@ namespace DocumentVerificationDLL
                                 .ToList();
 
                 string aadhaarNo = lines.FirstOrDefault(l => Regex.IsMatch(l, @"\b\d{4}\s\d{4}\s\d{4}\b")) ?? "";
-                string dob = lines.FirstOrDefault(l => Regex.IsMatch(l, @"\d{2}/\d{2}/\d{4}")) ?? "";
+                string dob = "";
+                string dobLine = lines.FirstOrDefault(l => Regex.IsMatch(l, @"\d{2}/\d{2}/\d{4}"));
+                if (!string.IsNullOrEmpty(dobLine))
+                {
+                    // Extract just the date part, removing any "Date of Birth:" prefix
+                    var dobMatch = Regex.Match(dobLine, @"(\d{2}/\d{2}/\d{4})");
+                    if (dobMatch.Success)
+                    {
+                        dob = dobMatch.Groups[1].Value;
+                    }
+                }
 
                 string name = "";
                 if (!string.IsNullOrEmpty(aadhaarNo))
@@ -180,12 +190,42 @@ namespace DocumentVerificationDLL
                                 .ToList();
 
                 string panNo = lines.FirstOrDefault(l => Regex.IsMatch(l, @"[A-Z]{5}[0-9]{4}[A-Z]")) ?? "";
+                string dob = "";
+                string dobLine = lines.FirstOrDefault(l => Regex.IsMatch(l, @"\d{2}/\d{2}/\d{4}"));
+                if (!string.IsNullOrEmpty(dobLine))
+                {
+                    // Extract just the date part, removing any "Date of Birth:" prefix
+                    var dobMatch = Regex.Match(dobLine, @"(\d{2}/\d{2}/\d{4})");
+                    if (dobMatch.Success)
+                    {
+                        dob = dobMatch.Groups[1].Value;
+                    }
+                }
 
                 string name = "";
-                int idx = lines.FindIndex(l => l.Contains(panNo));
-                if (idx > 0) name = lines[idx - 1];
+                int panIdx = lines.FindIndex(l => l.Contains(panNo));
+                if (panIdx > 0)
+                {
+                    // Look for name in lines before PAN number, excluding lines that contain DOB or other patterns
+                    for (int i = panIdx - 1; i >= 0; i--)
+                    {
+                        string candidateName = lines[i].Trim();
+                        // Skip lines that contain DOB, PAN pattern, or are too short
+                        if (!string.IsNullOrEmpty(candidateName) &&
+                            !Regex.IsMatch(candidateName, @"\d{2}/\d{2}/\d{4}") &&
+                            !Regex.IsMatch(candidateName, @"[A-Z]{5}[0-9]{4}[A-Z]") &&
+                            candidateName.Length > 2 &&
+                            !candidateName.Contains("Date of Birth") &&
+                            !candidateName.Contains("Income Tax") &&
+                            !candidateName.Contains("Department"))
+                        {
+                            name = candidateName;
+                            break;
+                        }
+                    }
+                }
 
-                return new PANData { Name = name, PANNo = panNo };
+                return new PANData { Name = name, PANNo = panNo, DOB = dob };
             }
             catch (Exception ex)
             {
@@ -215,7 +255,10 @@ namespace DocumentVerificationDLL
                     ApplicantName = RegexMatch(text, @"ApplicantName[:\s\[]*([A-Za-z\s]+)"),
                     ApplicantAddress = RegexMatch(text, @"ApplicantAddress[:\s\[]*([A-Za-z0-9,\-\s]+)"),
                     SurveyNo = RegexMatch(text, @"SurveyNo[:\s\[]*([\d/]+)"),
-                    MeasuringArea = RegexMatch(text, @"Total\s*Area[:\s\[]([\d]+\s(?:Sqft|Soft))"),
+                  
+                    MeasuringArea = RegexMatch(text, @"Total\s*Area[:\s\[]*([\d]+\s*(?:Sqft|Soft))"),
+
+
                     Village = RegexMatch(text, @"Village[:\s\[]*([A-Za-z\s]+)"),
                     Hobli = RegexMatch(text, @"Hobli[:\s\[]*([A-Za-z\s]+)"),
                     Taluk = RegexMatch(text, @"Taluk[:\s\[]*([A-Za-z\s]+)"),
@@ -247,6 +290,7 @@ namespace DocumentVerificationDLL
     {
         public string? Name { get; set; }
         public string? PANNo { get; set; }
+        public string? DOB { get; set; }
     }
 
     public class ECData
