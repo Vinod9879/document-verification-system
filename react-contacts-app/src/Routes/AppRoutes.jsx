@@ -10,9 +10,6 @@ import AdminDashboard from '../Components/Dashboard/AdminDashboard';
 import DocumentExtraction from '../Components/Dashboard/DocumentExtraction';
 import AuditLogs from '../Components/Dashboard/AuditLogs';
 import UserActivity from '../Components/Dashboard/UserActivity';
-import AdminLoginDebug from '../Components/Debug/AdminLoginDebug';
-import SimpleAdminTest from '../Components/Debug/SimpleAdminTest';
-import AuthStatus from '../Components/Debug/AuthStatus';
 import { useAuth } from '../Services/AuthService';
 
 const ProtectedRoute = ({ children, requireAdmin = false }) => {
@@ -36,9 +33,6 @@ const AppRoutes = () => {
       <Route path="/login" element={<UserLogin />} />
       <Route path="/register" element={<UserRegister />} />
       <Route path="/admin-login" element={<AdminLogin />} />
-      <Route path="/admin-debug" element={<AdminLoginDebug />} />
-      <Route path="/simple-test" element={<SimpleAdminTest />} />
-      <Route path="/auth-status" element={<AuthStatus />} />
       <Route path="/signout" element={<SignOut />} />
       <Route 
         path="/dashboard" 

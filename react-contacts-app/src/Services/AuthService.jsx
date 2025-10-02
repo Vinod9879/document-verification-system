@@ -66,7 +66,6 @@ export const AuthProvider = ({ children }) => {
     if (token && !isAuthenticated && !loading) {
       // Retry after 2 seconds if we have a token but aren't authenticated
       const retryTimer = setTimeout(() => {
-        console.log('Retrying token verification...');
         verifyToken();
       }, 2000);
       
@@ -76,9 +75,7 @@ export const AuthProvider = ({ children }) => {
 
   const verifyToken = async () => {
     try {
-      console.log('Verifying token...');
       const response = await axios.get('/auth/verify');
-      console.log('Token verification successful:', response.data);
       setUser(response.data);
       setIsAuthenticated(true);
       setIsAdmin(response.data.role === 'Admin');
@@ -93,7 +90,6 @@ export const AuthProvider = ({ children }) => {
         setUser(null);
       } else {
         // For network errors, keep the token and try again later
-        console.log('Network error, keeping token for retry');
       }
     } finally {
       setLoading(false);
