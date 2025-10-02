@@ -1,16 +1,16 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.EntityFrameworkCore;
-using webApitest.Data;
-using webApitest.Models;
-using webApitest.Services;
 using DocumentVerificationDLL;
-using VerificationDLL;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 using System.Security.Claims;
-using webApitest.DTOs;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using System.Globalization;
+using VerificationDLL;
+using webApitest.Data;
+using webApitest.DTOs;
+using webApitest.Models;
+using webApitest.Services;
 
 namespace webApitest.Controllers
 {
@@ -332,26 +332,6 @@ namespace webApitest.Controllers
 
                 _logger.LogInformation($"Document extraction completed for upload {uploadId} by admin. ExtractedData ID: {extractedData.Id}");
 
-                // Automatically trigger verification after extraction
-                try
-                {
-                    var verificationService = new VerificationService(_context, _logger);
-                    var verificationResult = await verificationService.VerifyAsync(uploadId);
-                    
-                    // Log automatic verification
-                    await _auditService.LogActivityAsync(adminId, "Automatic Document Verification", 
-                        $"Automatically verified documents after extraction for User: {upload.User?.FullName} ({upload.User?.Email})", 
-                        HttpContext, "Verification", uploadId, "Success", 
-                        $"Verification completed automatically for Upload ID: {uploadId}, Status: {verificationResult.Status}");
-                    
-                    _logger.LogInformation($"Automatic verification completed for upload {uploadId}. Status: {verificationResult.Status}");
-                }
-                catch (Exception verificationEx)
-                {
-                    _logger.LogError(verificationEx, $"Error during automatic verification for upload {uploadId}");
-                    // Don't fail the extraction if verification fails
-                }
-
                 return Ok(new
                 {
                     message = "Data extracted successfully",
@@ -373,6 +353,7 @@ namespace webApitest.Controllers
                         PANNo = extractedData.PANNo,
                         SurveyNo = extractedData.SurveyNo,
                         Village = extractedData.Village,
+                        MeasuringArea = extractedData.MeasuringArea,
                         District = extractedData.District
                     }
                 });
@@ -524,35 +505,40 @@ namespace webApitest.Controllers
                     ExtractedData = new
                     {
                         Id = extractedData.Id,
-                        AadhaarData = new
+                        aadhaarData = new
                         {
-                            Name = extractedData.AadhaarName,
-                            Number = extractedData.AadhaarNo,
-                            DOB = extractedData.DOB,
-                            HasData = !string.IsNullOrEmpty(extractedData.AadhaarName) || !string.IsNullOrEmpty(extractedData.AadhaarNo)
+                            name = extractedData.AadhaarName,
+                            number = extractedData.AadhaarNo,
+                            dob = extractedData.DOB,
+                            hasData = !string.IsNullOrEmpty(extractedData.AadhaarName) || !string.IsNullOrEmpty(extractedData.AadhaarNo)
                         },
-                        PANData = new
+                        panData = new
                         {
-                            Name = extractedData.PANName,
-                            Number = extractedData.PANNo,
-                            HasData = !string.IsNullOrEmpty(extractedData.PANName) || !string.IsNullOrEmpty(extractedData.PANNo)
+                            name = extractedData.PANName,
+                            number = extractedData.PANNo,
+                            dob = extractedData.DOB,
+                            hasData = !string.IsNullOrEmpty(extractedData.PANName) || !string.IsNullOrEmpty(extractedData.PANNo)
                         },
-                        ApplicationData = new
+                        applicationData = new
                         {
-                            ApplicationNumber = extractedData.ApplicationNumber,
-                            ApplicantName = extractedData.ApplicantName,
-                            ApplicantAddress = extractedData.ApplicantAddress,
-                            HasData = !string.IsNullOrEmpty(extractedData.ApplicationNumber) || !string.IsNullOrEmpty(extractedData.ApplicantName)
+                            applicationNumber = extractedData.ApplicationNumber,
+                            applicantName = extractedData.ApplicantName,
+                            applicantAddress = extractedData.ApplicantAddress,
+                            hasData = !string.IsNullOrEmpty(extractedData.ApplicationNumber) || !string.IsNullOrEmpty(extractedData.ApplicantName)
                         },
-                        SurveyData = new
+                        surveyData = new
                         {
-                            SurveyNo = extractedData.SurveyNo,
-                            MeasuringArea = extractedData.MeasuringArea,
-                            Village = extractedData.Village,
-                            Hobli = extractedData.Hobli,
-                            Taluk = extractedData.Taluk,
-                            District = extractedData.District,
-                            HasData = !string.IsNullOrEmpty(extractedData.SurveyNo) || !string.IsNullOrEmpty(extractedData.Village)
+                            surveyNo = extractedData.SurveyNo,
+                            measuringArea = extractedData.MeasuringArea,
+                            village = extractedData.Village,
+                            hobli = extractedData.Hobli,
+                            taluk = extractedData.Taluk,
+                            district = extractedData.District,
+                            hasData = !string.IsNullOrEmpty(extractedData.SurveyNo) || 
+                                     !string.IsNullOrEmpty(extractedData.Village) ||
+                                     !string.IsNullOrEmpty(extractedData.Hobli) ||
+                                     !string.IsNullOrEmpty(extractedData.Taluk) ||
+                                     !string.IsNullOrEmpty(extractedData.District)
                         }
                     }
                 });
@@ -736,93 +722,66 @@ namespace webApitest.Controllers
                 return StatusCode(500, "Internal server error while retrieving user documents");
             }
         }
-
+        // Get geolocation data (Admin only)
         [HttpGet("geolocation/{uploadId}")]
         [Authorize]
         public async Task<IActionResult> GetGeoLocation(int uploadId)
         {
+            var adminId = GetCurrentAdminId();
+            
             try
             {
-                // Step 1: Fetch extracted EC data
-                var extracted = await _context.ExtractedData
+                var upload = await _context.UserUploadedDocuments
+                    .Include(u => u.User)
+                    .FirstOrDefaultAsync(u => u.Id == uploadId);
+
+                if (upload == null)
+                {
+                    return NotFound("Upload not found");
+                }
+
+                // Get extracted data for this upload
+                var extractedData = await _context.ExtractedData
                     .FirstOrDefaultAsync(e => e.UploadId == uploadId);
 
-                if (extracted == null)
-                    return NotFound("Extracted EC data not found for this UploadId.");
-
-                // Step 2: Validate minimum fields
-                if (string.IsNullOrWhiteSpace(extracted.Village) ||
-                    string.IsNullOrWhiteSpace(extracted.Taluk) ||
-                    string.IsNullOrWhiteSpace(extracted.District))
+                // Use actual extracted data if available, otherwise use default values
+                var geoLocationData = new
                 {
-                    return BadRequest("Incomplete address data. At least Village, Taluk, and District are required.");
-                }
-
-                // Step 3: Clean up District (handle Bangalore Urban -> Bengaluru)
-                var district = extracted.District.Trim();
-                if (district.Equals("Bangalore Urban", StringComparison.OrdinalIgnoreCase))
-                    district = "Bengaluru";
-
-                // Hardcode state as Karnataka
-                const string state = "Karnataka";
-
-                // Step 4: Build full address
-                var address = $"{extracted.Village}, {extracted.Taluk}, {district}, {state}, India";
-                address = Regex.Replace(address, @"\s+", " ").Trim().Trim(',');
-
-                // Step 5: Call Nominatim API
-                using var client = new HttpClient();
-                client.DefaultRequestHeaders.UserAgent.ParseAdd("MyGeoApp/1.0 (https://mydomain.com/contact)");
-
-                async Task<List<NominatimResult>?> QueryNominatim(string queryAddress)
-                {
-                    var url = $"https://nominatim.openstreetmap.org/search?format=json&q={Uri.EscapeDataString(queryAddress)}";
-                    _logger.LogInformation("Geocoding with address: {Address}, URL: {Url}", queryAddress, url);
-
-                    var response = await client.GetAsync(url);
-                    if (!response.IsSuccessStatusCode)
+                    UploadId = uploadId,
+                    UserName = upload.User?.FullName,
+                    Village = !string.IsNullOrEmpty(extractedData?.Village) ? extractedData.Village : "Not Available",
+                    Hobli = !string.IsNullOrEmpty(extractedData?.Hobli) ? extractedData.Hobli : "Not Available",
+                    Taluk = !string.IsNullOrEmpty(extractedData?.Taluk) ? extractedData.Taluk : "Not Available",
+                    District = !string.IsNullOrEmpty(extractedData?.District) ? extractedData.District : "Not Available",
+                    State = "Karnataka", // Default state
+                    Pincode = "Not Available",
+                    Coordinates = new
                     {
-                        _logger.LogError("Nominatim API failed. Status: {Status}", response.StatusCode);
-                        return null;
-                    }
+                        Latitude = 12.9716, // Default coordinates (Bangalore)
+                        Longitude = 77.5946
+                    },
+                    ExtractedAt = extractedData?.CreatedAt ?? DateTime.UtcNow,
+                    HasRealData = extractedData != null && !string.IsNullOrEmpty(extractedData.Village)
+                };
 
-                    var json = await response.Content.ReadAsStringAsync();
-                    return JsonSerializer.Deserialize<List<NominatimResult>>(json);
-                }
+                // Log geolocation data retrieval
+                await _auditService.LogActivityAsync(adminId, "View Geolocation Data", 
+                    $"Admin viewed geolocation data for upload ID: {uploadId}, User: {upload.User?.FullName}", 
+                    HttpContext, "Geolocation", uploadId, "Success", 
+                    $"Retrieved geolocation data for upload {uploadId}");
 
-                // Try primary query
-                var results = await QueryNominatim(address);
-
-                // Fallback query (only Village + State + India)
-                if (results == null || results.Count == 0)
-                {
-                    var fallbackAddress = $"{extracted.Village}, {state}, India";
-                    _logger.LogWarning("Primary geocoding failed, retrying with fallback: {FallbackAddress}", fallbackAddress);
-                    results = await QueryNominatim(fallbackAddress);
-                }
-
-                if (results == null || results.Count == 0)
-                    return BadRequest("Unable to find location for this address.");
-
-                decimal lat = decimal.Parse(results[0].lat, CultureInfo.InvariantCulture);
-                decimal lon = decimal.Parse(results[0].lon, CultureInfo.InvariantCulture);
-
-                // Return directly to frontend without database storage
-                return Ok(new { latitude = lat, longitude = lon, address });
+                return Ok(geoLocationData);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, $"Error while getting geolocation for upload {uploadId}");
-                return StatusCode(500, "Internal server error while getting geolocation");
+                // Log failed retrieval
+                await _auditService.LogActivityAsync(adminId, "View Geolocation Data Failed", 
+                    $"Error retrieving geolocation data for upload ID: {uploadId}", 
+                    HttpContext, "Geolocation", uploadId, "Failed", $"Error: {ex.Message}");
+                
+                _logger.LogError(ex, $"Error retrieving geolocation data for upload {uploadId}");
+                return StatusCode(500, "Internal server error while retrieving geolocation data");
             }
         }
-    }
-
-    // Nominatim API response model
-    public class NominatimResult
-    {
-        public string lat { get; set; } = string.Empty;
-        public string lon { get; set; } = string.Empty;
-        public string display_name { get; set; } = string.Empty;
     }
 }
