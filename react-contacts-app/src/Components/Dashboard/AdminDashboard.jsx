@@ -59,9 +59,7 @@ const AdminDashboard = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      console.log('Fetching users from API...');
       const usersData = await userService.getAllUsers();
-      console.log('Users data received:', usersData);
       setUsers(usersData);
     } catch (error) {
       console.error('Error fetching users:', error);
@@ -74,15 +72,12 @@ const AdminDashboard = () => {
   const fetchDocuments = async (forceRefresh = false) => {
     // Prevent multiple simultaneous calls
     if (documentsLoading && !forceRefresh) {
-      console.log('Documents already loading, skipping...');
       return;
     }
 
     try {
       setDocumentsLoading(true);
-      console.log('Fetching documents from API...');
       const documentsData = await documentService.getAllDocuments();
-      console.log('Documents data received:', documentsData);
       setDocuments(documentsData || []);
     } catch (error) {
       console.error('Failed to load documents:', error);
@@ -97,7 +92,7 @@ const AdminDashboard = () => {
       const analyticsData = await documentService.getAnalytics();
       setAnalytics(analyticsData);
     } catch (error) {
-      console.log('Failed to load analytics');
+      // Analytics loading failed silently
     }
   };
 
@@ -117,7 +112,7 @@ const AdminDashboard = () => {
       );
       setActivityLogs(documentActivities);
     } catch (error) {
-      console.log('Failed to load activity logs');
+      // Activity logs loading failed silently
     }
   };
 
@@ -128,7 +123,7 @@ const AdminDashboard = () => {
       // Show all system events (no filtering)
       setAuditLogs(response.logs || []);
     } catch (error) {
-      console.log('Failed to load audit logs');
+      // Audit logs loading failed silently
     } finally {
       setAuditLogsLoading(false);
     }
@@ -170,7 +165,6 @@ const AdminDashboard = () => {
   const handleViewExtractedData = async (documentId) => {
     try {
       const data = await documentService.getDocumentExtractedData(documentId);
-      console.log('API Response:', data); // Debug log
       setExtractedData(data);
       setShowExtractedDataModal(true);
     } catch (error) {
@@ -211,14 +205,18 @@ const AdminDashboard = () => {
     try {
       setMessage('Getting location...');
       const locationData = await documentService.getGeoLocation(uploadId);
-      console.log('Location data:', locationData);
       
-      // Display the location information
-      setMessage(`Location found: ${locationData.address} (Lat: ${locationData.latitude}, Lng: ${locationData.longitude})`);
+      // Display the location information using the correct backend response structure
+      const address = `${locationData.village}, ${locationData.hobli}, ${locationData.taluk}, ${locationData.district}, ${locationData.state} - ${locationData.pincode}`;
       
-      // You can also open the location in a new tab with Google Maps
-      const mapsUrl = `https://www.google.com/maps?q=${locationData.latitude},${locationData.longitude}`;
-      window.open(mapsUrl, '_blank');
+      if (locationData.hasRealData) {
+        setMessage(`Location found: ${address} (Lat: ${locationData.coordinates.latitude}, Lng: ${locationData.coordinates.longitude})`);
+        // Open the location in a new tab with Google Maps
+        const mapsUrl = `https://www.google.com/maps?q=${locationData.coordinates.latitude},${locationData.coordinates.longitude}`;
+        window.open(mapsUrl, '_blank');
+      } else {
+        setMessage(`Location data not available for this document. Please ensure documents have been extracted first.`);
+      }
       
     } catch (error) {
       console.error('Error getting location:', error);
@@ -227,10 +225,8 @@ const AdminDashboard = () => {
   };
 
   const handleDeleteUser = async (userId) => {
-    console.log('Delete button clicked for user ID:', userId);
     if (window.confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
       try {
-        console.log('Proceeding with delete for user ID:', userId);
         await userService.deleteUser(userId);
         setMessage('User deleted successfully.');
         fetchUsers(); // Refresh the list
@@ -238,8 +234,6 @@ const AdminDashboard = () => {
         console.error('Delete user error:', error);
         setMessage('Failed to delete user. Please try again.');
       }
-    } else {
-      console.log('Delete cancelled by user');
     }
   };
 
@@ -1363,6 +1357,7 @@ const AdminDashboard = () => {
                         <div>
                           <p><strong>Name:</strong> {extractedData.extractedData.panData.name || 'N/A'}</p>
                           <p><strong>Number:</strong> {extractedData.extractedData.panData.number || 'N/A'}</p>
+                          <p><strong>DOB:</strong> {extractedData.extractedData.panData.dob || 'N/A'}</p>
                         </div>
                       ) : (
                         <p className="text-muted">No PAN data extracted</p>

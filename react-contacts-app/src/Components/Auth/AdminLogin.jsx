@@ -193,16 +193,6 @@ const AdminLogin = () => {
                 User Registration
               </Link>
             </p>
-            <p className="mb-2">
-              <Link to="/admin-debug" className="text-decoration-none text-warning">
-                Debug Admin Login
-              </Link>
-            </p>
-            <p className="mb-0">
-              <Link to="/simple-test" className="text-decoration-none text-info">
-                Simple Admin Test
-              </Link>
-            </p>
           </div>
         </Card>
       </div>

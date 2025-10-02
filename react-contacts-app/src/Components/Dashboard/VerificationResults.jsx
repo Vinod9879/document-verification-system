@@ -12,7 +12,6 @@ const VerificationResults = ({ documentStatus, extractedData, onRefresh }) => {
     try {
       setVerifying(true);
       const result = await documentService.verifyDocuments();
-      console.log('Verification result:', result);
       
       // Refresh the document status to show updated verification
       if (onRefresh) {

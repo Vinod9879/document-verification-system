@@ -81,9 +81,7 @@ const UserDashboard = () => {
   const fetchDocumentStatus = async () => {
     try {
       setRefreshing(true);
-      console.log('Fetching document status...');
       const status = await documentService.getDocumentStatus();
-      console.log('Document status response:', status);
       
       // Check if status has changed
       if (documentStatus && status) {
@@ -99,12 +97,9 @@ const UserDashboard = () => {
       // If documents have been extracted, fetch the extracted data
       if (status && status.hasExtractedData && status.uploadId) {
         try {
-          console.log('Fetching extracted data for upload:', status.uploadId);
           const extractedDataResponse = await documentService.getDocumentExtractedData(status.uploadId);
-          console.log('Extracted data response:', extractedDataResponse);
           setExtractedData(extractedDataResponse);
         } catch (extractError) {
-          console.log('No extracted data available yet:', extractError);
           setExtractedData(null);
         }
       } else {
@@ -112,8 +107,7 @@ const UserDashboard = () => {
       }
       
     } catch (error) {
-      console.log('No documents uploaded yet or API error:', error);
-      // Don't set mock data - let the user upload real documents
+      // No documents uploaded yet or API error
       setDocumentStatus(null);
       setExtractedData(null);
     } finally {
@@ -124,7 +118,6 @@ const UserDashboard = () => {
   const fetchUploadHistory = async () => {
     try {
       const history = await documentService.getUploadHistory();
-      console.log('Upload history response:', history);
       
       // Handle different response structures
       if (Array.isArray(history)) {
@@ -138,8 +131,7 @@ const UserDashboard = () => {
         setUploadHistory([]);
       }
     } catch (error) {
-      console.log('No upload history available:', error);
-      // No mock data - show empty state
+      // No upload history available
       setUploadHistory([]);
     }
   };
@@ -150,7 +142,7 @@ const UserDashboard = () => {
       const response = await auditLogsService.getMyActivity(null, null, null, 1, 10);
       setUserActivities(response.logs || []);
     } catch (error) {
-      console.log('Failed to load user activities');
+      // Failed to load user activities
     } finally {
       setActivitiesLoading(false);
     }
@@ -221,7 +213,7 @@ const UserDashboard = () => {
         setTimeout(() => checkProcessingStatus(documentId), 5000);
       }
     } catch (error) {
-      console.log('Error checking processing status:', error);
+      // Error checking processing status
     }
   };
 
@@ -321,11 +313,7 @@ Documents: ${upload.ecPath ? 'EC ✓' : 'EC ✗'} | ${upload.aadhaarPath ? 'Aadh
       setUpdating(true);
       setMessage('');
       
-      console.log('Updating profile with data:', editProfileData);
-      console.log('API endpoint: /UserDashboard/profile');
-      
       const response = await documentService.updateUserProfile(editProfileData);
-      console.log('Profile update response:', response);
       
       setMessage('Profile updated successfully!');
       setShowEditProfile(false);
@@ -385,16 +373,7 @@ Documents: ${upload.ecPath ? 'EC ✓' : 'EC ✗'} | ${upload.aadhaarPath ? 'Aadh
       setUpdating(true);
       setMessage('');
       
-      console.log('Changing password...');
-      console.log('API endpoint: /UserDashboard/change-password');
-      console.log('Password data:', { 
-        currentPassword: '***', 
-        newPassword: '***', 
-        confirmPassword: '***' 
-      });
-      
       const response = await documentService.changePassword(passwordData);
-      console.log('Password change response:', response);
       
       setMessage('Password changed successfully!');
       setShowChangePassword(false);

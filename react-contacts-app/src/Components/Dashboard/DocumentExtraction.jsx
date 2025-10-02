@@ -95,8 +95,7 @@ const DocumentExtraction = () => {
       
       // Show extracted data
       if (response.extractedData) {
-        console.log('Extracted Data:', response.extractedData);
-        toast.success('Check console for extracted data details');
+        toast.success('Documents processed successfully');
       }
       
       // Refresh documents list if admin
