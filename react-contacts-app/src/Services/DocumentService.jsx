@@ -155,6 +155,11 @@ const documentService = {
     const response = await api.get(`/AdminDashboard/geolocation/${uploadId}`);
     return response.data;
   },
+
+  async getVerificationResults(uploadId) {
+    const response = await api.get(`/AdminDashboard/verification-results/${uploadId}`);
+    return response.data;
+  },
 };
 
 export default documentService;

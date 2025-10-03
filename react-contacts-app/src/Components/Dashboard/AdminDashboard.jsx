@@ -7,6 +7,7 @@ import auditLogsService from '../../Services/AuditLogsService';
 import Card from '../Common/Card';
 import Button from '../Common/Button';
 import Navigation from '../Layout/Navigation';
+import VerificationResultsModal from './VerificationResultsModal';
 
 const AdminDashboard = () => {
   const { logout } = useAuth();
@@ -47,6 +48,10 @@ const AdminDashboard = () => {
   const [userDocuments, setUserDocuments] = useState([]);
   const [showUserDocumentsModal, setShowUserDocumentsModal] = useState(false);
   const [selectedUserForDocuments, setSelectedUserForDocuments] = useState(null);
+  
+  // Verification results modal state
+  const [showVerificationResultsModal, setShowVerificationResultsModal] = useState(false);
+  const [selectedDocumentForVerification, setSelectedDocumentForVerification] = useState(null);
 
   useEffect(() => {
     fetchUsers();
@@ -131,11 +136,13 @@ const AdminDashboard = () => {
 
   const handleTriggerVerification = async (documentId) => {
     try {
+      setMessage('Verifying documents...');
       const result = await documentService.triggerVerification(documentId);
       setMessage(`Verification completed! Status: ${result.isVerified ? 'VERIFIED' : 'FAILED'}.`);
       fetchDocuments(true);
     } catch (error) {
-      setMessage('Failed to trigger verification');
+      console.error('Verification error:', error);
+      setMessage('Failed to trigger verification: ' + (error.response?.data?.message || error.message));
     }
   };
 
@@ -222,6 +229,11 @@ const AdminDashboard = () => {
       console.error('Error getting location:', error);
       setMessage('Failed to get location: ' + (error.response?.data?.message || error.message));
     }
+  };
+
+  const handleViewVerificationResults = (documentId) => {
+    setSelectedDocumentForVerification(documentId);
+    setShowVerificationResultsModal(true);
   };
 
   const handleDeleteUser = async (userId) => {
@@ -766,14 +778,43 @@ const AdminDashboard = () => {
                                   </>
                                 ) : doc.hasExtractedData ? "Extracted" : "Extract"}
                               </Button>
-                              <Button 
-                                variant="outline-primary" 
-                                size="sm"
-                                onClick={() => handleTriggerVerification(doc.id)}
-                                title="Verify document authenticity"
-                              >
-                                Verify
-                              </Button>
+                              {doc.IsVerified ? (
+                                <Button 
+                                  variant="success" 
+                                  size="sm"
+                                  disabled
+                                  title="Already verified"
+                                >
+                                  ✅ Verified
+                                </Button>
+                              ) : doc.VerificationStatus === 'Rejected' ? (
+                                <Button 
+                                  variant="danger" 
+                                  size="sm"
+                                  disabled
+                                  title="Verification rejected"
+                                >
+                                  ❌ Rejected
+                                </Button>
+                              ) : doc.VerificationStatus === 'Under Review' ? (
+                                <Button 
+                                  variant="warning" 
+                                  size="sm"
+                                  disabled
+                                  title="Under review"
+                                >
+                                  🔍 Under Review
+                                </Button>
+                              ) : (
+                                <Button 
+                                  variant="outline-primary" 
+                                  size="sm"
+                                  onClick={() => handleTriggerVerification(doc.id)}
+                                  title="Verify document authenticity"
+                                >
+                                  🔍 Verify
+                                </Button>
+                              )}
                               <Button 
                                 variant="outline-info" 
                                 size="sm"
@@ -789,6 +830,14 @@ const AdminDashboard = () => {
                                 title="Get document location"
                               >
                                 📍 Location
+                              </Button>
+                              <Button 
+                                variant="outline-info" 
+                                size="sm"
+                                onClick={() => handleViewVerificationResults(doc.id)}
+                                title="View verification results"
+                              >
+                                📊 Results
                               </Button>
                             </div>
                           </td>
@@ -1566,17 +1615,59 @@ const AdminDashboard = () => {
                                   </>
                                 ) : doc.hasExtractedData ? "✅ Extracted" : "🔍 Extract"}
                               </Button>
-                              <Button 
-                                variant="outline-success" 
-                                size="sm"
-                                onClick={() => handleTriggerVerification(doc.id)}
-                                style={{
-                                  borderRadius: '15px',
-                                  fontSize: '12px'
-                                }}
-                              >
-                                ✅ Verify
-                              </Button>
+                              {doc.IsVerified ? (
+                                <Button 
+                                  variant="success" 
+                                  size="sm"
+                                  disabled
+                                  style={{
+                                    borderRadius: '15px',
+                                    fontSize: '12px'
+                                  }}
+                                  title="Already verified"
+                                >
+                                  ✅ Verified
+                                </Button>
+                              ) : doc.VerificationStatus === 'Rejected' ? (
+                                <Button 
+                                  variant="danger" 
+                                  size="sm"
+                                  disabled
+                                  style={{
+                                    borderRadius: '15px',
+                                    fontSize: '12px'
+                                  }}
+                                  title="Verification rejected"
+                                >
+                                  ❌ Rejected
+                                </Button>
+                              ) : doc.VerificationStatus === 'Under Review' ? (
+                                <Button 
+                                  variant="warning" 
+                                  size="sm"
+                                  disabled
+                                  style={{
+                                    borderRadius: '15px',
+                                    fontSize: '12px'
+                                  }}
+                                  title="Under review"
+                                >
+                                  🔍 Under Review
+                                </Button>
+                              ) : (
+                                <Button 
+                                  variant="outline-success" 
+                                  size="sm"
+                                  onClick={() => handleTriggerVerification(doc.id)}
+                                  style={{
+                                    borderRadius: '15px',
+                                    fontSize: '12px'
+                                  }}
+                                  title="Verify document authenticity"
+                                >
+                                  🔍 Verify
+                                </Button>
+                              )}
                               <Button 
                                 variant="outline-info" 
                                 size="sm"
@@ -1600,6 +1691,18 @@ const AdminDashboard = () => {
                               >
                                 📍 Location
                               </Button>
+                              <Button 
+                                variant="outline-info" 
+                                size="sm"
+                                onClick={() => handleViewVerificationResults(doc.id)}
+                                title="View verification results"
+                                style={{
+                                  borderRadius: '15px',
+                                  fontSize: '12px'
+                                }}
+                              >
+                                📊 Results
+                              </Button>
                             </div>
                           </div>
                         </Card>
@@ -1620,6 +1723,16 @@ const AdminDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Verification Results Modal */}
+      <VerificationResultsModal
+        uploadId={selectedDocumentForVerification}
+        isOpen={showVerificationResultsModal}
+        onClose={() => {
+          setShowVerificationResultsModal(false);
+          setSelectedDocumentForVerification(null);
+        }}
+      />
     </div>
   );
 };
