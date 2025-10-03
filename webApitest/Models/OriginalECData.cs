@@ -35,6 +35,31 @@ namespace webApitest.Models
 
         public bool Checked { get; set; } = false;
 
+        [MaxLength(200)]
+        public string? OwnerName { get; set; }
+
+        [MaxLength(50)]
+        public string? Extent { get; set; }
+
+        public bool IsMainOwner { get; set; } = false;
+
+        [MaxLength(50)]
+        public string? OwnershipType { get; set; }
+
+        [MaxLength(50)]
+        public string? LandType { get; set; }
+
+        public bool IsGovtRestricted { get; set; } = false;
+
+        public bool IsCourtStay { get; set; } = false;
+
+        public bool IsAlienated { get; set; } = false;
+
+        public bool AnyTransaction { get; set; } = false;
+
+        [MaxLength(500)]
+        public string? Remarks { get; set; }
+
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }

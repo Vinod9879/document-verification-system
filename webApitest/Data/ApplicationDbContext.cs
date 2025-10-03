@@ -211,6 +211,36 @@ namespace webApitest.Data
                 entity.Property(e => e.Checked)
                     .HasDefaultValue(false);
                     
+                entity.Property(e => e.OwnerName)
+                    .HasMaxLength(200);
+                    
+                entity.Property(e => e.Extent)
+                    .HasMaxLength(50);
+                    
+                entity.Property(e => e.IsMainOwner)
+                    .HasDefaultValue(false);
+                    
+                entity.Property(e => e.OwnershipType)
+                    .HasMaxLength(50);
+                    
+                entity.Property(e => e.LandType)
+                    .HasMaxLength(50);
+                    
+                entity.Property(e => e.IsGovtRestricted)
+                    .HasDefaultValue(false);
+                    
+                entity.Property(e => e.IsCourtStay)
+                    .HasDefaultValue(false);
+                    
+                entity.Property(e => e.IsAlienated)
+                    .HasDefaultValue(false);
+                    
+                entity.Property(e => e.AnyTransaction)
+                    .HasDefaultValue(false);
+                    
+                entity.Property(e => e.Remarks)
+                    .HasMaxLength(500);
+                    
                 entity.Property(e => e.CreatedAt)
                     .IsRequired()
                     .HasDefaultValueSql("GETDATE()");

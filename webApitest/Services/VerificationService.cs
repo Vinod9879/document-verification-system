@@ -48,8 +48,27 @@ namespace webApitest.Services
             var originalPAN = await _context.OriginalPANData
                 .FirstOrDefaultAsync(p => p.PANNo == extracted.PANNo);
 
+            _logger.LogInformation($"Looking for EC record with Survey Number: '{extracted.SurveyNo}'");
+            
             var originalEC = await _context.OriginalECData
                 .FirstOrDefaultAsync(e => e.SurveyNo == extracted.SurveyNo);
+                
+            if (originalEC != null)
+            {
+                _logger.LogInformation($"Found EC record: Survey={originalEC.SurveyNo}, Village={originalEC.Village}, District={originalEC.District}");
+            }
+            else
+            {
+                _logger.LogInformation($"No EC record found for Survey Number: '{extracted.SurveyNo}'");
+                
+                // Debug: Check what EC records exist
+                var allECRecords = await _context.OriginalECData.ToListAsync();
+                _logger.LogInformation($"Total EC records in database: {allECRecords.Count}");
+                foreach (var ec in allECRecords)
+                {
+                    _logger.LogInformation($"EC Record - Survey: '{ec.SurveyNo}', Village: '{ec.Village}', District: '{ec.District}'");
+                }
+            }
 
             _logger.LogInformation($"Original data lookup completed for uploadId: {uploadId}");
 
@@ -71,17 +90,17 @@ namespace webApitest.Services
                 ApplicantNameMatch = !string.IsNullOrEmpty(extracted.ApplicantName),
                 ApplicantAddressMatch = !string.IsNullOrEmpty(extracted.ApplicantAddress),
                 SurveyNoMatch = originalEC != null ? 
-                    string.Equals(extracted.SurveyNo?.Trim(), originalEC.SurveyNo?.Trim(), StringComparison.OrdinalIgnoreCase) : null,
+                    string.Equals(extracted.SurveyNo?.Trim(), originalEC.SurveyNo?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
                 MeasuringAreaMatch = originalEC != null ? 
-                    string.Equals(extracted.MeasuringArea?.Trim(), originalEC.MeasuringArea?.Trim(), StringComparison.OrdinalIgnoreCase) : null,
+                    string.Equals(extracted.MeasuringArea?.Trim(), originalEC.MeasuringArea?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
                 VillageMatch = originalEC != null ? 
-                    string.Equals(extracted.Village?.Trim(), originalEC.Village?.Trim(), StringComparison.OrdinalIgnoreCase) : null,
+                    string.Equals(extracted.Village?.Trim(), originalEC.Village?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
                 HobliMatch = originalEC != null ? 
-                    string.Equals(extracted.Hobli?.Trim(), originalEC.Hobli?.Trim(), StringComparison.OrdinalIgnoreCase) : null,
+                    string.Equals(extracted.Hobli?.Trim(), originalEC.Hobli?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
                 TalukMatch = originalEC != null ? 
-                    string.Equals(extracted.Taluk?.Trim(), originalEC.Taluk?.Trim(), StringComparison.OrdinalIgnoreCase) : null,
+                    string.Equals(extracted.Taluk?.Trim(), originalEC.Taluk?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
                 DistrictMatch = originalEC != null ? 
-                    string.Equals(extracted.District?.Trim(), originalEC.District?.Trim(), StringComparison.OrdinalIgnoreCase) : null,
+                    string.Equals(extracted.District?.Trim(), originalEC.District?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
                 VerifiedAt = DateTime.UtcNow
             };
 
