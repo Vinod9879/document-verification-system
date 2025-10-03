@@ -1,3 +1,4 @@
+
 using DocumentVerificationDLL;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -552,6 +553,456 @@ namespace webApitest.Controllers
                 
                 _logger.LogError(ex, $"Error retrieving extracted data for upload {uploadId}");
                 return StatusCode(500, "Internal server error while retrieving extracted data");
+            }
+        }
+
+        [HttpGet("verification-results/{uploadId}")]
+        [Authorize]
+        public async Task<IActionResult> GetVerificationResults(int uploadId)
+        {
+            var adminId = GetCurrentAdminId();
+            
+            try
+            {
+                _logger.LogInformation($"Getting verification results for uploadId: {uploadId}");
+                // Get the uploaded document record
+                var upload = await _context.UserUploadedDocuments
+                    .Include(u => u.User)
+                    .FirstOrDefaultAsync(u => u.Id == uploadId);
+
+                if (upload == null)
+                {
+                    _logger.LogWarning($"Upload record not found for uploadId: {uploadId}");
+                    return NotFound("Upload record not found");
+                }
+
+                _logger.LogInformation($"Found upload record for user: {upload.User?.FullName}");
+
+                // Get extracted data
+                var extractedData = await _context.ExtractedData
+                    .FirstOrDefaultAsync(e => e.UploadId == uploadId);
+
+                if (extractedData == null)
+                {
+                    _logger.LogWarning($"No extracted data found for uploadId: {uploadId}");
+                    return NotFound("No extracted data found for this upload");
+                }
+
+                _logger.LogInformation($"Found extracted data for uploadId: {uploadId}");
+
+                // Get verification results
+                var verificationResult = await _context.VerificationResults
+                    .FirstOrDefaultAsync(v => v.UploadId == uploadId);
+
+                if (verificationResult == null)
+                {
+                    _logger.LogWarning($"No verification results found for uploadId: {uploadId}");
+                    return NotFound("No verification results found for this upload");
+                }
+
+                _logger.LogInformation($"Found verification results for uploadId: {uploadId}, Status: {verificationResult.Status}");
+
+                // Smart verification: Find matching records in original tables
+                _logger.LogInformation("Starting smart verification process...");
+                _logger.LogInformation($"Extracted Survey Number: '{extractedData.SurveyNo}'");
+                
+                // Debug: Check if OriginalECData table has any records at all
+                var totalECRecords = await _context.OriginalECData.CountAsync();
+                _logger.LogInformation($"Total records in OriginalECData table: {totalECRecords}");
+                
+                // Test: Check if smart verification is running
+                _logger.LogInformation("Smart verification is running - this should appear in logs");
+                _logger.LogInformation($"Smart verification DEBUG - SurveyNo: '{extractedData.SurveyNo}', IsNullOrEmpty: {string.IsNullOrEmpty(extractedData.SurveyNo)}");
+                
+                string originalAadhaarName = "Data Not Available";
+                string originalAadhaarNo = "Data Not Available";
+                string originalDOB = "Data Not Available";
+                string originalPANName = "Data Not Available";
+                string originalPANNo = "Data Not Available";
+                string originalSurveyNo = "Data Not Available";
+                string originalVillage = "Data Not Available";
+                string originalDistrict = "Data Not Available";
+                string originalMeasuringArea = "Data Not Available";
+                string originalHobli = "Data Not Available";
+                string originalTaluk = "Data Not Available";
+                
+                // Store the originalEC record for additional fields
+                OriginalECData originalEC = null;
+                
+                try
+                {
+                    _logger.LogInformation("Starting Step 1: Aadhaar lookup");
+                    // Step 1: Find matching Aadhaar record by Aadhaar Number (exact match only)
+                    if (!string.IsNullOrEmpty(extractedData.AadhaarNo))
+                    {
+                        var originalAadhaar = await _context.OriginalAadhaarData
+                            .FirstOrDefaultAsync(a => a.AadhaarNo == extractedData.AadhaarNo);
+                        
+                        if (originalAadhaar != null)
+                        {
+                            originalAadhaarName = originalAadhaar.AadhaarName ?? "Data Not Available";
+                            originalAadhaarNo = originalAadhaar.AadhaarNo ?? "Data Not Available";
+                            originalDOB = originalAadhaar.DOB.ToString("dd/MM/yyyy");
+                            _logger.LogInformation($"Found matching Aadhaar record for number: {extractedData.AadhaarNo}");
+                        }
+                        else
+                        {
+                            _logger.LogInformation($"No matching Aadhaar record found for number: {extractedData.AadhaarNo}");
+                        }
+                    }
+                    _logger.LogInformation("Step 1 completed successfully");
+                    
+                    _logger.LogInformation("Starting Step 2: PAN lookup");
+                    // Step 2: Find matching PAN record by PAN Number (exact match only)
+                    if (!string.IsNullOrEmpty(extractedData.PANNo))
+                    {
+                        var originalPAN = await _context.OriginalPANData
+                            .FirstOrDefaultAsync(p => p.PANNo == extractedData.PANNo);
+                        
+                        if (originalPAN != null)
+                        {
+                            originalPANName = originalPAN.PANName ?? "Data Not Available";
+                            originalPANNo = originalPAN.PANNo ?? "Data Not Available";
+                            _logger.LogInformation($"Found matching PAN record for number: {extractedData.PANNo}");
+                        }
+                        else
+                        {
+                            _logger.LogInformation($"No matching PAN record found for number: {extractedData.PANNo}");
+                        }
+                    }
+                    _logger.LogInformation("Step 2 completed successfully");
+                    
+                    _logger.LogInformation("Starting Step 3: EC lookup");
+                    // Step 3: Find matching EC record by Survey Number (exact match only)
+                    if (!string.IsNullOrEmpty(extractedData.SurveyNo))
+                    {
+                        _logger.LogInformation($"Looking for EC record with Survey Number: '{extractedData.SurveyNo}'");
+                 
+                 try
+                 {
+                     // Debug: Log the exact query being executed
+                     _logger.LogInformation($"Executing query: SELECT * FROM OriginalECData WHERE SurveyNo = '{extractedData.SurveyNo}'");
+                     
+                     // Robust string comparison - handle whitespace and case sensitivity
+                     originalEC = await _context.OriginalECData
+                                 .FirstOrDefaultAsync(e => e.SurveyNo == extractedData.SurveyNo);
+                     
+                     _logger.LogInformation($"Database query result: {(originalEC != null ? "Found" : "Not Found")}");
+                     
+                     // Debug: Log the exact values being compared
+                     _logger.LogInformation($"Comparing: ExtractedSurveyNo='{extractedData.SurveyNo}' (Length: {extractedData.SurveyNo?.Length})");
+                     _logger.LogInformation($"Trimmed comparison: '{extractedData.SurveyNo?.Trim()}'");
+                 
+                     if (originalEC != null)
+                     {
+                         originalSurveyNo = originalEC.SurveyNo ?? "Data Not Available";
+                         originalVillage = originalEC.Village ?? "Data Not Available";
+                         originalDistrict = originalEC.District ?? "Data Not Available";
+                         originalMeasuringArea = originalEC.MeasuringArea ?? "Data Not Available";
+                         originalHobli = originalEC.Hobli ?? "Data Not Available";
+                         originalTaluk = originalEC.Taluk ?? "Data Not Available";
+                         _logger.LogInformation($"Found matching EC record for survey: {extractedData.SurveyNo}");
+                         _logger.LogInformation($"EC Data - Survey: {originalEC.SurveyNo}, Village: {originalEC.Village}, District: {originalEC.District}");
+                     }
+                     else
+                     {
+                         _logger.LogInformation($"No matching EC record found for survey: {extractedData.SurveyNo}");
+                         
+                         // Debug: Check what EC records exist
+                         var allECRecords = await _context.OriginalECData.ToListAsync();
+                         _logger.LogInformation($"Total EC records in database: {allECRecords.Count}");
+                         foreach (var ec in allECRecords)
+                         {
+                             _logger.LogInformation($"EC Record - Survey: '{ec.SurveyNo}' (Length: {ec.SurveyNo?.Length}, Trimmed: '{ec.SurveyNo?.Trim()}'), Village: '{ec.Village}', District: '{ec.District}'");
+                         }
+                         
+                         // Debug: Check if there are any Survey Numbers that contain "78"
+                         var similarRecords = allECRecords.Where(ec => ec.SurveyNo != null && ec.SurveyNo.Contains("78")).ToList();
+                         _logger.LogInformation($"Records containing '78': {similarRecords.Count}");
+                         foreach (var ec in similarRecords)
+                         {
+                             _logger.LogInformation($"Similar Record - Survey: '{ec.SurveyNo}' (Length: {ec.SurveyNo?.Length})");
+                         }
+                     }
+                 }
+                 catch (Exception ex)
+                 {
+                     _logger.LogError($"Error during EC lookup: {ex.Message}");
+                     _logger.LogError($"Exception type: {ex.GetType().Name}");
+                     _logger.LogError($"Stack trace: {ex.StackTrace}");
+                     
+                     // Try a simpler query to test database connectivity
+                     try
+                     {
+                         var simpleCount = await _context.OriginalECData.CountAsync();
+                         _logger.LogInformation($"Simple count query successful: {simpleCount} records");
+                     }
+                     catch (Exception simpleEx)
+                     {
+                         _logger.LogError($"Even simple query failed: {simpleEx.Message}");
+                     }
+                 }
+             }
+                    
+                    
+                    _logger.LogInformation("Smart verification process completed");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"Error during smart verification: {ex.Message}. Using 'Data Not Available' values.");
+                }
+
+                // Create field match analysis with actual original data (excluding Application Number and Applicant Name)
+                var fieldMatches = new
+                {
+                    aadhaarName = new
+                    {
+                        extracted = extractedData.AadhaarName,
+                        original = originalAadhaarName,
+                        match = verificationResult.AadhaarNameMatch,
+                        status = verificationResult.AadhaarNameMatch == true ? "Match" : 
+                                verificationResult.AadhaarNameMatch == false ? "Mismatch" : "No Data"
+                    },
+                    aadhaarNo = new
+                    {
+                        extracted = extractedData.AadhaarNo,
+                        original = originalAadhaarNo,
+                        match = verificationResult.AadhaarNoMatch,
+                        status = verificationResult.AadhaarNoMatch == true ? "Match" : 
+                                verificationResult.AadhaarNoMatch == false ? "Mismatch" : "No Data"
+                    },
+                    dob = new
+                    {
+                        extracted = extractedData.DOB,
+                        original = originalDOB,
+                        match = verificationResult.DOBMatch,
+                        status = verificationResult.DOBMatch == true ? "Match" : 
+                                verificationResult.DOBMatch == false ? "Mismatch" : "No Data"
+                    },
+                    panName = new
+                    {
+                        extracted = extractedData.PANName,
+                        original = originalPANName,
+                        match = verificationResult.PANNameMatch,
+                        status = verificationResult.PANNameMatch == true ? "Match" : 
+                                verificationResult.PANNameMatch == false ? "Mismatch" : "No Data"
+                    },
+                    panNo = new
+                    {
+                        extracted = extractedData.PANNo,
+                        original = originalPANNo,
+                        match = verificationResult.PANNoMatch,
+                        status = verificationResult.PANNoMatch == true ? "Match" : 
+                                verificationResult.PANNoMatch == false ? "Mismatch" : "No Data"
+                    },
+                    surveyNo = new
+                    {
+                        extracted = extractedData.SurveyNo,
+                        original = originalSurveyNo,
+                        match = originalSurveyNo != "Data Not Available" ? 
+                            string.Equals(extractedData.SurveyNo?.Trim(), originalSurveyNo?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
+                        status = originalSurveyNo != "Data Not Available" ? 
+                            (string.Equals(extractedData.SurveyNo?.Trim(), originalSurveyNo?.Trim(), StringComparison.OrdinalIgnoreCase) ? "Match" : "Mismatch") : "No Data"
+                    },
+                    village = new
+                    {
+                        extracted = extractedData.Village,
+                        original = originalVillage,
+                        match = originalVillage != "Data Not Available" ? 
+                            string.Equals(extractedData.Village?.Trim(), originalVillage?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
+                        status = originalVillage != "Data Not Available" ? 
+                            (string.Equals(extractedData.Village?.Trim(), originalVillage?.Trim(), StringComparison.OrdinalIgnoreCase) ? "Match" : "Mismatch") : "No Data"
+                    },
+                    district = new
+                    {
+                        extracted = extractedData.District,
+                        original = originalDistrict,
+                        match = originalDistrict != "Data Not Available" ? 
+                            string.Equals(extractedData.District?.Trim(), originalDistrict?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
+                        status = originalDistrict != "Data Not Available" ? 
+                            (string.Equals(extractedData.District?.Trim(), originalDistrict?.Trim(), StringComparison.OrdinalIgnoreCase) ? "Match" : "Mismatch") : "No Data"
+                    },
+                    measuringArea = new
+                    {
+                        extracted = extractedData.MeasuringArea,
+                        original = originalMeasuringArea,
+                        match = originalMeasuringArea != "Data Not Available" ? 
+                            string.Equals(extractedData.MeasuringArea?.Trim(), originalMeasuringArea?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
+                        status = originalMeasuringArea != "Data Not Available" ? 
+                            (string.Equals(extractedData.MeasuringArea?.Trim(), originalMeasuringArea?.Trim(), StringComparison.OrdinalIgnoreCase) ? "Match" : "Mismatch") : "No Data"
+                    },
+                    hobli = new
+                    {
+                        extracted = extractedData.Hobli,
+                        original = originalHobli,
+                        match = originalHobli != "Data Not Available" ? 
+                            string.Equals(extractedData.Hobli?.Trim(), originalHobli?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
+                        status = originalHobli != "Data Not Available" ? 
+                            (string.Equals(extractedData.Hobli?.Trim(), originalHobli?.Trim(), StringComparison.OrdinalIgnoreCase) ? "Match" : "Mismatch") : "No Data"
+                    },
+                    taluk = new
+                    {
+                        extracted = extractedData.Taluk,
+                        original = originalTaluk,
+                        match = originalTaluk != "Data Not Available" ? 
+                            string.Equals(extractedData.Taluk?.Trim(), originalTaluk?.Trim(), StringComparison.OrdinalIgnoreCase) : false,
+                        status = originalTaluk != "Data Not Available" ? 
+                            (string.Equals(extractedData.Taluk?.Trim(), originalTaluk?.Trim(), StringComparison.OrdinalIgnoreCase) ? "Match" : "Mismatch") : "No Data"
+                    },
+                    // Additional OriginalECData fields
+                    ownerName = new
+                    {
+                        extracted = "N/A", // Not available in extracted data
+                        original = originalEC?.OwnerName ?? "Data Not Available",
+                        match = false,
+                        status = originalEC?.OwnerName != null ? "Available" : "No Data"
+                    },
+                    extent = new
+                    {
+                        extracted = "N/A", // Not available in extracted data
+                        original = originalEC?.Extent ?? "Data Not Available",
+                        match = false,
+                        status = originalEC?.Extent != null ? "Available" : "No Data"
+                    },
+                    landType = new
+                    {
+                        extracted = "N/A", // Not available in extracted data
+                        original = originalEC?.LandType ?? "Data Not Available",
+                        match = false,
+                        status = originalEC?.LandType != null ? "Available" : "No Data"
+                    },
+                    ownershipType = new
+                    {
+                        extracted = "N/A", // Not available in extracted data
+                        original = originalEC?.OwnershipType ?? "Data Not Available",
+                        match = false,
+                        status = originalEC?.OwnershipType != null ? "Available" : "No Data"
+                    },
+                    isMainOwner = new
+                    {
+                        extracted = "N/A", // Not available in extracted data
+                        original = originalEC?.IsMainOwner == true ? "Yes" : originalEC?.IsMainOwner == false ? "No" : "Data Not Available",
+                        match = false,
+                        status = originalEC?.IsMainOwner != null ? "Available" : "No Data"
+                    },
+                    isGovtRestricted = new
+                    {
+                        extracted = "N/A", // Not available in extracted data
+                        original = originalEC?.IsGovtRestricted == true ? "Yes" : originalEC?.IsGovtRestricted == false ? "No" : "Data Not Available",
+                        match = false,
+                        status = originalEC?.IsGovtRestricted != null ? "Available" : "No Data"
+                    },
+                    isCourtStay = new
+                    {
+                        extracted = "N/A", // Not available in extracted data
+                        original = originalEC?.IsCourtStay == true ? "Yes" : originalEC?.IsCourtStay == false ? "No" : "Data Not Available",
+                        match = false,
+                        status = originalEC?.IsCourtStay != null ? "Available" : "No Data"
+                    },
+                    isAlienated = new
+                    {
+                        extracted = "N/A", // Not available in extracted data
+                        original = originalEC?.IsAlienated == true ? "Yes" : originalEC?.IsAlienated == false ? "No" : "Data Not Available",
+                        match = false,
+                        status = originalEC?.IsAlienated != null ? "Available" : "No Data"
+                    },
+                    anyTransaction = new
+                    {
+                        extracted = "N/A", // Not available in extracted data
+                        original = originalEC?.AnyTransaction == true ? "Yes" : originalEC?.AnyTransaction == false ? "No" : "Data Not Available",
+                        match = false,
+                        status = originalEC?.AnyTransaction != null ? "Available" : "No Data"
+                    }
+                };
+
+                // Calculate match statistics (including new fields: Measuring Area, Hobli, Taluk)
+                var totalFields = 11; // Total number of fields being compared
+                var matchedFields = new[] {
+                    verificationResult.AadhaarNameMatch,
+                    verificationResult.AadhaarNoMatch,
+                    verificationResult.DOBMatch,
+                    verificationResult.PANNameMatch,
+                    verificationResult.PANNoMatch,
+                    verificationResult.SurveyNoMatch,
+                    verificationResult.VillageMatch,
+                    verificationResult.DistrictMatch,
+                    verificationResult.MeasuringAreaMatch,
+                    verificationResult.HobliMatch,
+                    verificationResult.TalukMatch
+                }.Count(m => m == true);
+
+                var mismatchedFields = new[] {
+                    verificationResult.AadhaarNameMatch,
+                    verificationResult.AadhaarNoMatch,
+                    verificationResult.DOBMatch,
+                    verificationResult.PANNameMatch,
+                    verificationResult.PANNoMatch,
+                    verificationResult.SurveyNoMatch,
+                    verificationResult.VillageMatch,
+                    verificationResult.DistrictMatch,
+                    verificationResult.MeasuringAreaMatch,
+                    verificationResult.HobliMatch,
+                    verificationResult.TalukMatch
+                }.Count(m => m == false);
+
+                var noDataFields = totalFields - matchedFields - mismatchedFields;
+                var matchPercentage = totalFields > 0 ? (matchedFields * 100.0 / totalFields) : 0;
+
+                // Log admin viewing verification results
+                await _auditService.LogActivityAsync(adminId, "View Verification Results", 
+                    $"Admin viewed verification results for upload ID: {uploadId}, User: {upload.User?.FullName}", 
+                    HttpContext, "VerificationResults", verificationResult.Id, "Success", 
+                    $"Retrieved verification results for upload {uploadId}");
+
+                // Debug: Log smart verification results
+                _logger.LogInformation($"Smart verification results - SurveyNo: {originalSurveyNo}, Village: {originalVillage}, District: {originalDistrict}");
+                
+                // Debug: Test if smart verification is working
+                if (originalSurveyNo == "Data Not Available")
+                {
+                    _logger.LogWarning("Smart verification failed - all EC fields show 'Data Not Available'");
+                    _logger.LogWarning($"This means the smart verification logic is not finding the EC record for Survey Number: {extractedData.SurveyNo}");
+                }
+                else
+                {
+                    _logger.LogInformation("Smart verification successful - found original data");
+                }
+                
+                // Debug: Check if smart verification was executed
+                _logger.LogInformation($"Smart verification execution check - SurveyNo: {originalSurveyNo}");
+
+                return Ok(new
+                {
+                    UploadId = uploadId,
+                    UserName = upload.User?.FullName,
+                    UserEmail = upload.User?.Email,
+                    UploadedAt = upload.CreatedAt,
+                    VerifiedAt = verificationResult.VerifiedAt,
+                    VerificationStatus = verificationResult.Status,
+                    RiskScore = verificationResult.RiskScore,
+                    OverallMatch = verificationResult.OverallMatch,
+                    FieldMatches = fieldMatches,
+                    Statistics = new
+                    {
+                        TotalFields = totalFields,
+                        MatchedFields = matchedFields,
+                        MismatchedFields = mismatchedFields,
+                        NoDataFields = noDataFields,
+                        MatchPercentage = Math.Round(matchPercentage, 2)
+                    },
+                    RiskLevel = verificationResult.RiskScore >= 80 ? "High Risk" : 
+                               verificationResult.RiskScore >= 50 ? "Medium Risk" : "Low Risk"
+                });
+            }
+            catch (Exception ex)
+            {
+                // Log failed retrieval
+                await _auditService.LogActivityAsync(adminId, "View Verification Results Failed", 
+                    $"Error retrieving verification results for upload ID: {uploadId}", 
+                    HttpContext, "VerificationResults", uploadId, "Failed", $"Error: {ex.Message}");
+                
+                _logger.LogError(ex, $"Error retrieving verification results for upload {uploadId}. Stack trace: {ex.StackTrace}");
+                return StatusCode(500, $"Internal server error while retrieving verification results: {ex.Message}");
             }
         }
 
